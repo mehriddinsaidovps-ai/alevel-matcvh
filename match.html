@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Matching Grid — AS/A Level Activity</title>
+  <style>
+    :root{ --bg:#0f1724; --card:#0b1220; --accent:#14b8a6; --muted:#94a3b8; --surface:#0b1220; }
+    html,body{height:100%;margin:0;font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;color:#e6eef6;background:linear-gradient(180deg,#071025 0%, #07182a 60%);}
+    .app{max-width:1100px;margin:28px auto;padding:20px;border-radius:12px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+    h1{font-size:20px;margin:0}
+    p.lead{margin:0;color:var(--muted)}
+
+    .board{display:grid;grid-template-columns:1fr 420px;gap:18px}
+    .left{background:rgba(255,255,255,0.02);padding:14px;border-radius:10px;min-height:420px}
+    .right{background:rgba(255,255,255,0.02);padding:14px;border-radius:10px;min-height:420px;display:flex;flex-direction:column}
+
+    .terms-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+    .term-card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.03)}
+    .term-title{font-weight:600;margin:0 0 8px 0}
+    .slots{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+    .slot{min-height:56px;padding:8px;border-radius:6px;background:#071125;border:1px dashed rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:center;font-size:13px;text-align:center;color:var(--muted)}
+    .slot.filled{border-style:solid}
+
+    .draggables{margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px;overflow:auto;padding-right:6px}
+    .chip{padding:10px;border-radius:8px;background:linear-gradient(180deg,#061522,#072031);border:1px solid rgba(255,255,255,0.04);cursor:grab;font-size:13px}
+    .chip.dragging{opacity:0.5}
+
+    .controls{display:flex;gap:8px;align-items:center;margin-top:12px}
+    button{background:var(--accent);border:0;color:#032022;padding:10px 12px;border-radius:8px;font-weight:600;cursor:pointer}
+    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+
+    .status{margin-top:8px;color:var(--muted);font-size:13px}
+    .success{color:#7ee787}
+    footer{color:var(--muted);font-size:13px;margin-top:12px}
+
+    /* small screens */
+    @media (max-width:900px){.board{grid-template-columns:1fr;}.draggables{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>Matching Grid — AS/A Level (Terms × 4 cards)</h1>
+        <p class="lead">Drag each Learner-friendly definition, Activity, Example or Likely problems into the correct term slot. Work through sets of 4 terms.</p>
+      </div>
+      <div>
+        <div class="controls">
+          <button id="prevBtn" class="ghost" disabled>Previous</button>
+          <button id="nextBtn">Next set</button>
+          <button id="resetBtn" class="ghost">Reset set</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="board">
+      <section class="left">
+        <div id="termsContainer" class="terms-grid"></div>
+      </section>
+
+      <aside class="right">
+        <h3 style="margin:0">Draggable cards</h3>
+        <div style="font-size:13px;color:var(--muted);margin-top:6px">Drop the correct card into each slot. When all 4 slots of a term are filled correctly that term locks.</div>
+        <div id="draggables" class="draggables" aria-live="polite"></div>
+        <div class="status" id="status"></div>
+        <footer><small>Built for Cambridge AS/A level teaching — modify the content inside the script if you want different sets or wording.</small></footer>
+      </aside>
+    </main>
+  </div>
+
+  <script>
+    // --- data ---
+    const allTerms = [
+      { term: 'Calculate', definition: 'Work out a correct answer using data provided.', activity: 'Give binary numbers to add or convert.', example: 'Calculate the binary value of the denary number 37.', likely: 'Simple arithmetic or conversion errors due to missed steps.' },
+      { term: 'Comment', definition: 'Give an informed opinion or observation.', activity: "After running a program, ask students to comment on its efficiency.", example: 'Comment on why recursion might be less efficient than iteration.', likely: "Students may give vague or unsupported opinions." },
+      { term: 'Compare', definition: 'Point out similarities and/or differences.', activity: 'Ask students to compare storage types or data structures.', example: 'Compare RAM and ROM.', likely: 'Students describe separately instead of comparing directly.' },
+      { term: 'Complete', definition: 'Fill in missing information in a table or diagram.', activity: 'Provide an incomplete truth table for students to finish.', example: 'Complete the truth table for an AND gate.', likely: 'Errors when identifying logical patterns.' },
+      { term: 'Consider', definition: 'Think about and respond thoughtfully to given information.', activity: 'Give a problem statement and ask students to consider possible solutions.', example: 'Consider how data validation could prevent user errors.', likely: 'Students may give shallow or incomplete responses.' },
+      { term: 'Contrast', definition: 'Focus on the differences between things.', activity: 'Compare procedural and object-oriented programming approaches.', example: 'Contrast static and dynamic data structures.', likely: 'Students may accidentally include similarities.' },
+      { term: 'Define', definition: 'State the precise meaning of a term.', activity: 'Use flashcards to define key terms from the syllabus.', example: 'Define what is meant by a compiler.', likely: 'Students give broad or vague definitions.' },
+      { term: 'Demonstrate', definition: 'Show how something works or provide an example.', activity: 'Students demonstrate how a loop functions using code.', example: 'Demonstrate how to declare and use an array in Python.', likely: 'Confusing demonstration with explanation.' },
+      { term: 'Describe', definition: 'State the main features or characteristics.', activity: 'Ask students to describe how the fetch–execute cycle works.', example: 'Describe the main steps of the machine cycle.', likely: 'Missing key steps or writing too generally.' },
+      { term: 'Develop', definition: 'Take an idea further or build upon given information.', activity: 'Ask students to develop an algorithm to include an extra feature.', example: 'Develop the pseudocode to add input validation.', likely: 'Students repeat information instead of extending it.' },
+      { term: 'Discuss', definition: 'Write about an issue or topic in depth, presenting different viewpoints.', activity: 'Group debate on advantages and disadvantages of cloud storage.', example: 'Discuss the impacts of using AI in software development.', likely: 'Writing unbalanced or one-sided discussions.' },
+      { term: 'Draw', definition: 'Make a clear, labelled diagram or matching line.', activity: 'Ask students to draw a network topology diagram.', example: 'Draw and label a star network.', likely: 'Poor labelling or incorrect proportions.' },
+      { term: 'Evaluate', definition: 'Judge the value or effectiveness of something and justify your opinion.', activity: 'Compare two algorithms and evaluate which is more suitable for large data sets.', example: 'Evaluate linear search vs binary search.', likely: 'Listing pros and cons without a final judgement.' },
+      { term: 'Examine', definition: 'Look closely at details to understand or explain meaning.', activity: 'Examine a section of code to find logic errors.', example: 'Examine how error handling is implemented in the program.', likely: 'Missing subtle details or focusing on surface issues.' },
+      { term: 'Explain', definition: 'Say why or how something happens, showing cause and effect.', activity: 'Explain step-by-step how binary addition works.', example: 'Explain why binary is used to represent data.', likely: 'Restating facts instead of explaining relationships.' },
+      { term: 'Give', definition: 'Write a short answer from memory or given data.', activity: 'Quick quiz where students give the name of a component from its function.', example: 'Give the output of this logic circuit.', likely: 'Forgetting to provide concise, exact answers.' },
+      { term: 'Identify', definition: 'Recognise or name the correct answer or feature.', activity: 'Show screenshots and ask students to identify key components.', example: 'Identify the loop type used in the code.', likely: 'Guessing instead of checking understanding.' },
+      { term: 'Justify', definition: 'Provide reasons or evidence to support your answer.', activity: 'Choose the best sorting algorithm and justify your choice.', example: 'Justify why an array is suitable for storing student marks.', likely: 'Giving opinions without evidence.' },
+      { term: 'Outline', definition: 'Give the main points without detail.', activity: 'Ask students to outline the steps in the software development life cycle.', example: 'Outline the stages of the SDLC.', likely: 'Writing too much detail or missing key points.' },
+      { term: 'Predict', definition: 'Suggest what will happen based on known information.', activity: 'Show code and ask students to predict the output.', example: 'Predict the output of this pseudocode.', likely: 'Guessing without reasoning.' },
+      { term: 'Sketch', definition: 'Make a quick, simple drawing showing main features.', activity: 'Sketch a flowchart for a password check algorithm.', example: 'Sketch the layout of a simple network.', likely: 'Missing important elements or unclear diagrams.' },
+      { term: 'State', definition: 'Express clearly and directly in simple terms.', activity: 'State definitions of core computer science terms.', example: 'State one purpose of an operating system.', likely: 'Writing too much instead of a short statement.' },
+      { term: 'Suggest', definition: 'Apply knowledge to propose an idea or solution.', activity: 'Suggest improvements to an algorithm for efficiency.', example: 'Suggest one way to reduce memory usage in this program.', likely: 'Giving vague or unrealistic suggestions.' },
+      { term: 'Summarise', definition: 'Present only the key points briefly.', activity: 'Summarise a lesson topic in five bullet points.', example: 'Summarise the main functions of an operating system.', likely: 'Adding unnecessary details.' },
+      { term: 'Write', definition: 'Produce an answer in a specific required form.', activity: 'Write pseudocode for a given scenario.', example: 'Write code to read names from a file and display them.', likely: 'Misunderstanding required syntax or format.' }
+    ];
+
+    // chunk into sets of 4
+    function chunk(arr, size){ const out=[]; for(let i=0;i<arr.length;i+=size) out.push(arr.slice(i,i+size)); return out }
+    const sets = chunk(allTerms,4);
+
+    // state
+    let curSet = 0;
+    const termsContainer = document.getElementById('termsContainer');
+    const draggables = document.getElementById('draggables');
+    const status = document.getElementById('status');
+
+    document.getElementById('nextBtn').addEventListener('click', ()=>{ if(curSet < sets.length-1) curSet++; else curSet=0; renderSet(); updateControls(); });
+    document.getElementById('prevBtn').addEventListener('click', ()=>{ if(curSet>0) curSet--; renderSet(); updateControls(); });
+    document.getElementById('resetBtn').addEventListener('click', ()=>{ renderSet(); });
+
+    function updateControls(){ document.getElementById('prevBtn').disabled = (curSet===0); document.getElementById('nextBtn').textContent = (curSet < sets.length-1) ? 'Next set' : 'Restart'; }
+
+    function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]] } return a }
+
+    function renderSet(){
+      const data = sets[curSet];
+      termsContainer.innerHTML=''; draggables.innerHTML=''; status.textContent='';
+
+      // create term cards and slots
+      data.forEach((item, idx)=>{
+        const card = document.createElement('div'); card.className='term-card';
+        card.innerHTML = `<h4 class="term-title">${item.term}</h4>`;
+        const slotsWrap = document.createElement('div'); slotsWrap.className='slots';
+        ['Learner-friendly definition','Activity','Example','Likely problems'].forEach((label)=>{
+          const slot = document.createElement('div'); slot.className='slot'; slot.dataset.expected='';
+          // decide expected value: map label to item field
+          if(label.startsWith('Learner')) slot.dataset.expected = item.definition;
+          if(label==='Activity') slot.dataset.expected = item.activity;
+          if(label==='Example') slot.dataset.expected = item.example;
+          if(label.startsWith('Likely')) slot.dataset.expected = item.likely;
+          slot.dataset.term = item.term;
+          slot.innerHTML = `<small style="display:block;color:var(--muted);font-size:11px;margin-bottom:6px">${label}</small><div class="slot-value"></div>`;
+          slot.addEventListener('dragover', e=>e.preventDefault());
+          slot.addEventListener('drop', onDrop);
+          slotsWrap.appendChild(slot);
+        });
+        card.appendChild(slotsWrap);
+        termsContainer.appendChild(card);
+      });
+
+      // build pool of cards (text items) — include each of the four texts for every term
+      let pool = [];
+      data.forEach(item=>{ pool.push({text:item.definition, term:item.term}); pool.push({text:item.activity, term:item.term}); pool.push({text:item.example, term:item.term}); pool.push({text:item.likely, term:item.term}); });
+      shuffle(pool);
+
+      pool.forEach((p, i)=>{
+        const chip = document.createElement('div'); chip.className='chip'; chip.draggable=true; chip.dataset.text = p.text; chip.dataset.term = p.term; chip.id = 'chip-'+curSet+'-'+i;
+        chip.innerHTML = `<div style="font-size:12px;line-height:1.15">${escapeHtml(p.text)}</div>`;
+        chip.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', chip.id); chip.classList.add('dragging'); });
+        chip.addEventListener('dragend', e=>{ chip.classList.remove('dragging'); });
+        draggables.appendChild(chip);
+      });
+
+      // allow removing from slot by clicking
+      document.querySelectorAll('.slot').forEach(slot=>{
+        slot.addEventListener('click', ()=>{
+          const child = slot.querySelector('.chip-in-slot'); if(child){ // put back
+            const original = document.getElementById(child.dataset.origId);
+            if(original){ draggables.appendChild(original); original.style.display='block'; }
+            slot.querySelector('.slot-value').textContent=''; slot.classList.remove('filled'); slot.querySelector('.chip-in-slot')?.remove(); checkAllLocked();
+          }
+        })
+      });
+
+      status.textContent = `Set ${curSet+1} of ${sets.length}. Match each slot correctly.`;
+    }
+
+    function onDrop(e){
+      e.preventDefault();
+      const chipId = e.dataTransfer.getData('text/plain');
+      const dragged = document.getElementById(chipId);
+      if(!dragged) return;
+      const slot = e.currentTarget;
+      // if slot already has something, return that to pool
+      const existing = slot.querySelector('.chip-in-slot');
+      if(existing){ const orig = document.getElementById(existing.dataset.origId); if(orig){ draggables.appendChild(orig); orig.style.display='block'; } existing.remove(); }
+
+      // place a copy (hidden original)
+      dragged.style.display='none';
+      const clone = document.createElement('div'); clone.className='chip-in-slot'; clone.textContent = trimmedText(dragged.dataset.text);
+      clone.dataset.origId = dragged.id; clone.dataset.term = dragged.dataset.term;
+      slot.querySelector('.slot-value').appendChild(clone);
+      slot.classList.add('filled');
+
+      // check correctness
+      const expected = slot.dataset.expected.trim();
+      const provided = dragged.dataset.text.trim();
+      if(provided === expected){ // correct
+        clone.style.borderLeft = '4px solid #2ee6a7'; clone.title='Correct';
+        clone.dataset.correct = 'true';
+      } else {
+        clone.style.borderLeft = '4px solid #ff7b7b'; clone.title='Incorrect'; clone.dataset.correct = 'false';
+      }
+
+      checkAllLocked();
+    }
+
+    function checkAllLocked(){
+      const slots = document.querySelectorAll('.slot');
+      let allFilled = true; let allCorrect = true;
+      slots.forEach(s=>{
+        const child = s.querySelector('.chip-in-slot');
+        if(!child) allFilled = false;
+        if(child && child.dataset.correct === 'false') allCorrect = false;
+        if(!child) allCorrect = false;
+      });
+
+      if(allFilled){
+        if(allCorrect){ status.innerHTML = `<span class="success">Great — all matches correct for this set. Use Next set to continue.</span>`; lockCorrectTerms(); }
+        else { status.innerHTML = `<span style="color:#ffb86b">Some matches are incorrect. Click a filled slot to return the card and try again.</span>`; }
+      } else {
+        status.textContent = `Set ${curSet+1} of ${sets.length}. ${countFilled()} of ${slots.length} slots filled.`;
+      }
+    }
+
+    function lockCorrectTerms(){
+      // lock each term where all its 4 slots are correct
+      const termCards = document.querySelectorAll('.term-card');
+      termCards.forEach(card=>{
+        const term = card.querySelector('.term-title').textContent;
+        const slots = [...card.querySelectorAll('.slot')];
+        const all = slots.every(s=>s.querySelector('.chip-in-slot') && s.querySelector('.chip-in-slot').dataset.correct==='true');
+        if(all){ card.style.opacity = '0.7'; card.style.filter='grayscale(10%)'; }
+      });
+    }
+
+    function countFilled(){ return document.querySelectorAll('.slot .chip-in-slot').length }
+
+    function trimmedText(t){ return t.length>140 ? t.slice(0,137)+'...' : t }
+    function escapeHtml(unsafe) { return unsafe.replace(/[&<>"']/g, function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#039;"}[m]; }); }
+
+    // initial render
+    renderSet(); updateControls();
+  </script>
+</body>
+</html>
